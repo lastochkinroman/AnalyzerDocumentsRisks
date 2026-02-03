@@ -9,15 +9,24 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from PyPDF2 import PdfReader
 from docx import Document
 import ssl
+import httpx
+import socket
+
+# DNS and network configuration
+socket.setdefaulttimeout(30)  # Increase timeout
+os.environ['GRPC_DNS_RESOLVER'] = 'native'  # Use native DNS resolver
 
 load_dotenv()
 ssl._create_default_https_context = ssl._create_unverified_context
 
+# GigaChat configuration with correct auth URL
 giga = GigaChat(
-    scope='GIGACHAT_API_CORP',
-    auth_url="https://sm-auth-sd.prom-88-89-apps.ocp-geo.ocp.sigma.sbrf.ru/api/v2/oauth",
+    scope='GIGACHAT_API_PERS',
+    auth_url="https://ngw.devices.sberbank.ru:9443/api/v2/oauth",
     credentials=os.getenv('GIGACHAT_TOKEN'),
-    model='GigaChat-2-Max'
+    model='GigaChat',
+    verify_ssl_certs=False,
+    timeout=60
 )
 
 DOCUMENT_ANALYSIS_PROMPT = """
@@ -102,6 +111,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         else:
             await update.message.reply_markdown(f'⚠️ *Найденные риски в документе*:\n\n{response.content}')
 
+    except requests.exceptions.ConnectionError as e:
+        print(f"Сетевая ошибка: {e}")
+        await update.message.reply_text('🌐 Проблемы с сетевым подключением. Проверьте интернет и попробуйте снова.')
+    except socket.gaierror as e:
+        print(f"Ошибка DNS: {e}")
+        await update.message.reply_text('🔧 Проблема с DNS. Проверьте настройки сети.')
     except Exception as error:
         print(f'Error: {error}')
         await update.message.reply_text('❌ Произошла ошибка при анализе документа. Попробуйте еще раз.')
@@ -110,7 +125,25 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text('Пожалуйста, загрузите документ в формате PDF или Word (DOCX) для анализа')
 
 def main() -> None:
-    application = Application.builder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+    from telegram.request import HTTPXRequest
+    
+    # Increase timeouts
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        read_timeout=60,  # Increased
+        write_timeout=30,
+        connect_timeout=30,
+        pool_timeout=60,
+        http_version="1.1"
+    )
+    
+    # Check token before creating application
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if not token:
+        print("❌ TELEGRAM_BOT_TOKEN not found in .env file")
+        return
+    
+    application = Application.builder().token(token).request(request).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.Document.ALL, handle_document))

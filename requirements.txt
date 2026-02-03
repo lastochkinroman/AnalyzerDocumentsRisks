@@ -1,6 +1,6 @@
-python-telegram-bot==20.7
-langchain==0.1.0
-langchain-gigachat==0.0.13
+python-telegram-bot==22.6
+langchain==0.3.0
+langchain-gigachat==0.3.12
 PyPDF2==3.0.1
 python-docx==1.1.0
 python-dotenv==1.0.0
